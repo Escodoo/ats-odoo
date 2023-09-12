@@ -32,13 +32,23 @@ class IntegracaoPdv(http.Controller):
         hj = datetime.now()
         hj = hj - timedelta(days=30)
         hj = datetime.strftime(hj,'%Y-%m-%d %H:%M:%S')
-        prod_tmpl = http.request.env['product.template'].sudo().search([
-            ('write_date', '>=', hj),
-            ('sale_ok', '=', True)])
+        audit = http.request.env['auditlog.log'].sudo().search([
+            ('create_date', '>=', hj),
+            ('model_id', '=', 'product.template'),
+        ])
         prod_ids = []
         prd_ids = set()
-        for pr in prod_tmpl:
-            prd_ids.add(pr.id)
+        # TODO para quem não usa o AUDIT LOG vai ter problema
+        # if not audit:
+        #     prod_tmpl = http.request.env['product.template'].sudo().search([
+        #         ('write_date', '>=', hj),
+        #         ('sale_ok', '=', True)])
+        #     for pr in prod_tmpl:
+        #         prd_ids.add(pr.id)
+        # else:
+        for pr in audit:
+            if len(audit.line_ids):
+                prd_ids.add(audit.res_id.id)
 
         if len(prd_ids):
             prod_ids = http.request.env['product.product'].sudo().search([
