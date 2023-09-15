@@ -47,8 +47,8 @@ class IntegracaoPdv(http.Controller):
         #         prd_ids.add(pr.id)
         # else:
         for pr in audit:
-            if len(audit.line_ids):
-                prd_ids.add(audit.res_id.id)
+            if len(pr.line_ids):
+                prd_ids.add(pr.res_id.id)
 
         if len(prd_ids):
             prod_ids = http.request.env['product.product'].sudo().search([
