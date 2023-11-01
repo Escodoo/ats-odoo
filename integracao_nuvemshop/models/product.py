@@ -13,7 +13,7 @@ class ProductTemplate(models.Model):
     def write(self, vals):
         res = super(ProductTemplate, self).write(vals)
         url =  '%s%s/products/'  %(self.company_id.nuvem_shop_link, self.company_id.nuvem_shop_id)
-        if vals.get('online_venda') or (vals.get('name') or vals.get('description') or vals.get('complemento') or vals.get('online_preco') or vals.get('online_estoque') or vals.get('default_code') or vals.get('online_estoque') == 0):
+        if vals.get('online_venda') or vals.get('list_price') or vals.get('name') or vals.get('description') or vals.get('complemento') or vals.get('online_preco') or vals.get('online_estoque') or vals.get('default_code') or (vals.get('online_estoque') == 0):
             peso = self.peso or '0.0'
             altura = self.altura or '0.0'
             largura = self.largura or '0.0'
@@ -22,6 +22,7 @@ class ProductTemplate(models.Model):
             prod_name = self.name 
             prod_name = unidecode.unidecode(prod_name)
             descricao = ''
+            #import pudb;pu.db
             if self.description and self.description.strip():
                 descricao = unidecode.unidecode(self.description.replace('\n',''))
             headers = {
@@ -85,6 +86,8 @@ class ProductTemplate(models.Model):
                             self.online_preco, str(int( self.online_estoque)), peso, self.default_code,
                             largura, altura, comprimento)
                     values = values + var_prod + """]}"""
+                    print((values))
+                    self.message_post(body=_("Nuvem post: <em>%s</em>") % (values))
                     r = requests.post(url, headers=headers, data=values)
                     if r.status_code != 201:
                         msg_err = 'Erro ao ativar o produto na loja virtual: %s, %s' %(r.status_code, values)
@@ -111,6 +114,8 @@ class ProductTemplate(models.Model):
                         link = '%s%s' %(  
                             url,
                             str(self.item_id))
+                        print((values))
+                        self.message_post(body=_("Nuvem put: <em>%s</em>") % (values))
                         r = requests.put(link, headers=headers, data=values)
                         if r.status_code != 200:
                             msg_err = 'Erro ao ativar o produto na loja virtual: %s' %(r.status_code)
@@ -123,7 +128,10 @@ class ProductTemplate(models.Model):
                         tamanho = ''
                         cor = ''
                         for variant in variant_ids:
+                            variant_id = variant.id
                             estoque = variant.qty_available or variant.online_estoque
+                            if estoque < 0:
+                                estoque = 0
                             if variant.online_preco:
                                 preco = variant.online_preco
                             else:
@@ -134,15 +142,41 @@ class ProductTemplate(models.Model):
                                     tamanho = item.name
                                 if 'Cor' in item.attribute_id.name:
                                     cor = item.name
-                            values = """{"id": %s,"product_id": %s, "price": "%s","stock": %s,"weight": "%s","sku": "%s",\
-                                "width": %s, "height": %s}""" %(
-                                variant_id, str(self.item_id), 
-                                preco, 
-                                str(int(estoque)), peso, self.default_code,
-                                largura, altura)
+                            if variant_id:
+                                values = """{"id": %s,"product_id": %s, "price": "%s","stock": %s,"weight": "%s","sku": "%s",\
+                                    "width": %s, "height": %s}""" %(
+                                    variant_id, str(self.item_id), 
+                                    preco, 
+                                    str(int(estoque)), peso, self.default_code,
+                                    largura, altura)
+                            else:
+                                var_prod = ''
+                                #import pudb;pu.db
+                                #if 'Tamanho' in item.attribute_id.name:
+                                #    tamanho = item.name
+                                #if 'Cor' in item.attribute_id.name:
+                                #    cor = item.name
+                                #if var_prod != '':
+                                #    var_prod += ', '
+                                #if len(self.attribute_line_ids) == 2:
+                                #    var_prod = '{"name": "%s", "product_id": %s, "price": "%s","stock_management": true,"stock": %s,"weight": "%s","sku": "%s"\
+                                #        ,"width": %s, "height": %s, "depth": %s, "values": [{"pt": "%s"}, {"pt": "%s"}]}' %(
+                                #        prod_name, str(self.item_id), preco, str(int(estoque)), peso, self.default_code,
+                                #        largura, altura, comprimento, tamanho, cor)
+                                #if len(self.attribute_line_ids) == 1:
+                                #    var_prod = '{"name": "%s", "product_id": %s, "price": "%s","stock_management": true,"stock": %s,"weight": "%s","sku": "%s"\
+                                #        ,"width": %s, "height": %s, "depth": %s, "values": [{"pt": "%s"}]}' %(
+                                #        prod_name, str(self.item_id), preco, str(int(estoque)), peso, self.default_code,
+                                #        largura, altura, comprimento, tamanho)
+                                #values = var_prod
+                                #print((values))
+                                #self.message_post(body=_("Nuvem post: <em>%s</em>") % (values))
+                                #r = requests.post(url, headers=headers, data=values)
                             link = '%s%s/variants/%s' %(  
                                 url,
                                 str(self.item_id), str(self.variant_id))
+                            print((values))
+                            self.message_post(body=_("Nuvem put: <em>%s</em>") % (values))
                             r = requests.put(link, headers=headers, data=values)
                             if r.status_code != 200:
                                 msg_err = 'Erro ao ativar o produto na loja virtual: %s' %(r.status_code)
@@ -154,6 +188,8 @@ class ProductTemplate(models.Model):
                     link = '%s%s' %(  
                         url,
                         str(self.item_id))
+                    print((values))
+                    self.message_post(body=_("Nuvem put: <em>%s</em>") % (values))
                     r = requests.put(link, headers=headers, data=prod)
                     if r.status_code != 200:
                         msg_err = 'Erro ao inativar o produto na loja virtual: %s' %(r.status_code)
@@ -239,6 +275,8 @@ class ProductProduct(models.Model):
                             self.online_preco, str(int( self.qty_available)), peso, self.default_code,
                             largura, altura, comprimento)
                     values = values + var_prod + """]}"""
+                    print((values))
+                    self.message_post(body=_("Nuvem post: <em>%s</em>") % (values))
                     r = requests.post(url, headers=headers, data=values)
                     if r.status_code != 201:
                         msg_err = 'Erro ao inserir produto na loja virtual: %s' %(r.status_code)
@@ -273,6 +311,8 @@ class ProductProduct(models.Model):
                     link = '%s%s' %(  
                         url,
                         str(self.item_id))
+                    print((values))
+                    self.message_post(body=_("Nuvem put: <em>%s</em>") % (values))
                     r = requests.put(link, headers=headers, data=prod)
                     if r.status_code != 200:
                         msg_err = 'Erro ao inativar produto na loja virtual: %s' %(r.status_code)
