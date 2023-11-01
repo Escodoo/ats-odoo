@@ -7,6 +7,9 @@ import time
 import json
 import requests
 import urllib3
+import logging
+
+_logger = logging.getLogger(__name__)
 
 
 class PosOrder(models.Model):
@@ -121,7 +124,7 @@ class PosOrder(models.Model):
         return False
 
     @api.model
-    def cron_atualiza_nuvemshop(self):
+    def cron_atualiza_nuvemshop(self, num_dias = 3):
         # ---------------------------------------------------------------------------
         # este cron atualiza o estoque na nuvemshop quando 
         # ocorre uma venda
@@ -130,33 +133,45 @@ class PosOrder(models.Model):
         # pega o estoque atual de cada item
         # procura o estoque na nuvemshop
         # se maior q o estoque atual entao tem q diminuir
-        #import pudb;pu.db
+        # import pudb;pu.db 
+        data_s = fields.date.today() - timedelta(days=num_dias)
         data_ant = '%s-%s-%s 01:00:00' %(
-            fields.date.today().year, 
-            fields.date.today().month,
-            fields.date.today().day-3)
+            data_s.year, 
+            data_s.month,
+            data_s.day)
         #data_ant = '2021-04-20 08:00:00'
         pedidos = self.env['pos.order'].search([
             ('create_date','>', data_ant),
             ], order='id desc', limit=10)
         #self.verifica_novo_cadastro()   #  coloquei isso pra acertar os cadastros q existiam
+        arquivo = open('/home/ats/atualizou.txt', 'a+')
+        arquivo.write(str(data_s) + '\n')
         for ped in pedidos:
             for item in ped.lines:
-                 if not item.product_id.item_id:
-                     continue                 
-                 stock = item.product_id.product_tmpl_id.qty_available
-                 # 08/11/2022 vai colocar o estoque real la
-                 # nao preciso deste campo abaixo
-                 #estoque = item.product_id.online_estoque
-                 # tratar estoque real e estoque informado online
-                 #if not estoque:
-                 estoque = stock
-                 #elif estoque >= stock:
-                 #    estoque = stock
-                 cod_barra = item.product_id.barcode
-                 codigo = item.product_id.default_code
-                 #estoque_loja = self.estoque_loja(item.product_id.item_id, item.product_id.variant_id)
-                 #import pudb;pu.db
-                 #if int(estoque) < estoque_loja:
-                 self.atualiza_estoque_loja(item.product_id.item_id, item.product_id.variant_id, estoque)
+                if not item.product_id.item_id:
+                    continue                 
+                # stock = item.product_id.product_tmpl_id.qty_available
+                stock = item.product_id.qty_available
+                # 08/11/2022 vai colocar o estoque real la
+                # nao preciso deste campo abaixo
+                #estoque = item.product_id.online_estoque
+                # tratar estoque real e estoque informado online
+                #if not estoque:
+                estoque = stock
+                #elif estoque >= stock:
+                #    estoque = stock
+                cod_barra = item.product_id.barcode
+                codigo = item.product_id.default_code
+                estoque_loja = self.estoque_loja(item.product_id.item_id, item.product_id.variant_id)
+                # print ('item %s' %(item.product_id.default_code))
+                # print ('estoque loja/nuvem : %s / %s' %(str(estoque_loja), str(estoque)))
+                diferenca = estoque - estoque_loja
+                #  import pudb;pu.db
+                if diferenca != 0:
+                    msg = 'ATUALIZOU: %s , estoque: %s' %(item.product_id.name, str(estoque))
+                    #print (msg)
+                    arquivo.write(msg + '\n')
+                    _logger.info(msg)
+                    self.atualiza_estoque_loja(item.product_id.item_id, item.product_id.variant_id, estoque)
+        arquivo.close()
         return True
