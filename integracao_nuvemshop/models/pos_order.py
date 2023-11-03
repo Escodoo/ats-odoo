@@ -15,33 +15,33 @@ _logger = logging.getLogger(__name__)
 class PosOrder(models.Model):
     _inherit = 'pos.order'
 
-    @api.model
-    def create(self, values):
-        values['amount_return'] = values['amount_total']
-        #import pudb;pu.db
-        res = super(PosOrder, self).create(values)
-        # atualiza estoque
-        for item in res.lines:
-            if not item.product_id.item_id:
-                continue
-            stock = item.product_id.product_tmpl_id.qty_available
-            estoque = item.product_id.online_estoque
-            # tratar estoque real e estoque informado online
-            if not estoque:
-                estoque = stock
-            elif estoque >= stock:
-                estoque = stock
-            cod_barra = item.product_id.barcode
-            codigo = item.product_id.default_code
-            estoque_loja = self.estoque_loja(
-            item.product_id.item_id, item.product_id.variant_id)
-            #import pudb;pu.db
-            if int(estoque) < estoque_loja:
-                self.atualiza_estoque_loja(
-                    item.product_id.item_id, 
-                    item.product_id.variant_id, estoque)
+    # @api.model
+    # def create(self, values):
+    #     values['amount_return'] = values['amount_total']
+    #     #import pudb;pu.db
+    #     res = super(PosOrder, self).create(values)
+    #     # atualiza estoque
+    #     for item in res.lines:
+    #         if not item.product_id.item_id:
+    #             continue
+    #         stock = item.product_id.product_tmpl_id.qty_available
+    #         estoque = item.product_id.online_estoque
+    #         # tratar estoque real e estoque informado online
+    #         if not estoque:
+    #             estoque = stock
+    #         elif estoque >= stock:
+    #             estoque = stock
+    #         cod_barra = item.product_id.barcode
+    #         codigo = item.product_id.default_code
+    #         estoque_loja = self.estoque_loja(
+    #         item.product_id.item_id, item.product_id.variant_id)
+    #         #import pudb;pu.db
+    #         if int(estoque) < estoque_loja:
+    #             self.atualiza_estoque_loja(
+    #                 item.product_id.item_id, 
+    #                 item.product_id.variant_id, estoque)
 
-        return res
+    #     return res
 
     def nuvem_header(self):
         headers = {
@@ -58,7 +58,6 @@ class PosOrder(models.Model):
         return url
 
     def verifica_novo_cadastro(self):
-        #import pudb;pu.db
         ultimo_prod = self.env['product.product'].search([
             ('item_id','!=', False),
             ], order='item_id desc', limit=1)
@@ -112,7 +111,6 @@ class PosOrder(models.Model):
 
     def atualiza_estoque_loja(self, id_item, id_variant, estoque):
         # atualiza o estoque na Nuvemshop
-        #import pudb;pu.db
         prod = """{"id": %s, "stock":  %s, "product_id": %s}""" %(
             id_variant, str(int(estoque)), id_item)
         link = '%s%s/variants/%s' %(  
@@ -133,31 +131,53 @@ class PosOrder(models.Model):
         # pega o estoque atual de cada item
         # procura o estoque na nuvemshop
         # se maior q o estoque atual entao tem q diminuir
-        # import pudb;pu.db 
         data_s = fields.date.today() - timedelta(days=num_dias)
         data_ant = '%s-%s-%s 01:00:00' %(
             data_s.year, 
             data_s.month,
             data_s.day)
         #data_ant = '2021-04-20 08:00:00'
-        pedidos = self.env['pos.order'].search([
+
+        # pedidos = self.env['pos.order'].search([
+        #     ('create_date','>', data_ant),
+        #     ], order='id desc', limit=100)
+
+        # melhor pegar a stock.move.line ??
+        # todo movimento no estoque do item confere com a loja
+        pedidos = self.env['stock.move.line'].search([
             ('create_date','>', data_ant),
-            ], order='id desc', limit=10)
+            ], order='id', limit=100)
+
         #self.verifica_novo_cadastro()   #  coloquei isso pra acertar os cadastros q existiam
         arquivo = open('/home/ats/atualizou.txt', 'a+')
         arquivo.write(str(data_s) + '\n')
-        for ped in pedidos:
-            for item in ped.lines:
+        # for ped in pedidos:
+            # for item in ped.lines:
+        lista_item = set()
+        for item in pedidos:
+            if item.product_id.id in list(lista_item):
+                continue
+            else:
+                lista_item.add(item.product_id.id)
                 if not item.product_id.item_id:
                     continue                 
                 # stock = item.product_id.product_tmpl_id.qty_available
-                stock = item.product_id.qty_available
+                stock = self.env['stock.quant'].sudo().search([
+                        ('company_id','!=', False),
+                        ('product_id','=', item.product_id.id),
+                        ])
+                estoque = 0.0
+                for st in stock:
+                    estoque += st.quantity
+                if estoque < 0.0:
+                    estoque = 0.0
+                # stock = item.product_id.qty_available
                 # 08/11/2022 vai colocar o estoque real la
                 # nao preciso deste campo abaixo
                 #estoque = item.product_id.online_estoque
                 # tratar estoque real e estoque informado online
                 #if not estoque:
-                estoque = stock
+                # estoque = stock
                 #elif estoque >= stock:
                 #    estoque = stock
                 cod_barra = item.product_id.barcode
@@ -166,10 +186,15 @@ class PosOrder(models.Model):
                 # print ('item %s' %(item.product_id.default_code))
                 # print ('estoque loja/nuvem : %s / %s' %(str(estoque_loja), str(estoque)))
                 diferenca = estoque - estoque_loja
-                #  import pudb;pu.db
+
+                if estoque == 0.0 and estoque_loja == 0:
+                    continue
                 if diferenca != 0:
-                    msg = 'ATUALIZOU: %s , estoque: %s' %(item.product_id.name, str(estoque))
-                    #print (msg)
+                    msg = 'ATUALIZOU: %s - variante: %s, estoque: %s' %(
+                        item.product_id.name,
+                        str(item.product_id.variant_id),
+                        str(estoque)
+                    )
                     arquivo.write(msg + '\n')
                     _logger.info(msg)
                     self.atualiza_estoque_loja(item.product_id.item_id, item.product_id.variant_id, estoque)
