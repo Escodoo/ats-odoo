@@ -146,7 +146,7 @@ class PosOrder(models.Model):
         # todo movimento no estoque do item confere com a loja
         pedidos = self.env['stock.move.line'].search([
             ('create_date','>', data_ant),
-            ], order='id', limit=100)
+            ], order='id desc', limit=20)
 
         #self.verifica_novo_cadastro()   #  coloquei isso pra acertar os cadastros q existiam
         arquivo = open('/home/ats/atualizou.txt', 'a+')
