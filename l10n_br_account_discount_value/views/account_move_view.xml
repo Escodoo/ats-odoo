@@ -1,0 +1,16 @@
+<?xml version="1.0" ?>
+<odoo>
+    <record id="view_move_form_total_discount" model="ir.ui.view">
+        <field name="name">view.move.form.total.discount</field>
+        <field name="model">account.move</field>
+        <field name="inherit_id" ref="account.view_move_form" />
+        <field name="priority">10099</field>
+        <field name="arch" type="xml">
+            <data>
+                <xpath expr="//field[@name='amount_discount_value']" position="after">
+                    <field name="discount_total_geral" />
+                </xpath>
+            </data>
+        </field>
+    </record>
+</odoo>
