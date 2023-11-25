@@ -5,7 +5,14 @@ import math
 
 
 class AccountMove(models.Model):
-    _inherit = 'account.move'
+    _name = "account.move"
+    _inherit = [
+        _name,
+        "l10n_br_fiscal.document.move.mixin",
+    ]
+    _inherits = {"l10n_br_fiscal.document": "fiscal_document_id"}
+    _order = "date DESC, name DESC"
+
 
     discount_total_geral = fields.Monetary(
         string="Desconto Total",
@@ -54,9 +61,41 @@ class AccountMove(models.Model):
     #                           store=True, compute='compute_discount', track_visibility='always')
     # amount_discount_values = fields.Monetary(string='Total Desconto', digits=(16, 2))
 
-    @api.onchange('discount_total_geral')
+    @api.depends(
+        "line_ids.matched_debit_ids.debit_move_id.move_id.payment_id.is_matched",
+        "line_ids.matched_debit_ids.debit_move_id.move_id.line_ids.amount_residual",
+        "line_ids.matched_debit_ids.debit_move_id.move_id.line_ids.amount_residual_currency",
+        "line_ids.matched_credit_ids.credit_move_id.move_id.payment_id.is_matched",
+        "line_ids.matched_credit_ids.credit_move_id.move_id.line_ids.amount_residual",
+        "line_ids.matched_credit_ids.credit_move_id.move_id.line_ids.amount_residual_currency",
+        "line_ids.debit",
+        "line_ids.credit",
+        "line_ids.currency_id",
+        "line_ids.amount_currency",
+        "line_ids.amount_residual",
+        "line_ids.amount_residual_currency",
+        "line_ids.payment_id.state",
+        "line_ids.full_reconcile_id",
+        "ind_final",
+        "discount_total_geral",
+    )
+    def _compute_amount(self):
+        """Modify totals computation for including global discounts."""
+        super()._compute_amount()
+        for record in self:
+            record.set_lines_discount()
+
+    # @api.onchange('discount_total_geral')
     def set_lines_discount(self):
         import pudb;pu.db
+        if not self.discount_total_geral:
+            for line in self.invoice_line_ids:
+                line.update(
+                    {
+                        "discount_value": 0.0,
+                    }
+                )
+            return
         t_geral = self.amount_price_gross or self.amount_untaxed
         total_desc = self.discount_total_geral / t_geral
         total_desc = math.trunc(total_desc*100.0)/100.0
@@ -71,9 +110,9 @@ class AccountMove(models.Model):
                 # total_desc -= desc
                 # desc = desc / tot
             # line.discount = total_desc
+            # "discount": total_desc,
             line.update(
                 {
-                    "discount": total_desc,
                     "discount_value": self.discount_total_geral,
                 }
             )
@@ -82,6 +121,11 @@ class AccountMove(models.Model):
             # else:
             #     line.discount_value = desc
             total_linha -= 1
+        self.amount_total = self.amount_untaxed - self.discount_total_geral
+        sign = self.move_type in ["in_invoice", "out_refund"] and -1 or 1
+        self.amount_total_signed = self.amount_total * sign
+        amount_untaxed_signed = self.amount_untaxed
+        self.amount_untaxed_signed = amount_untaxed_signed * sign
         # elif self.discount_type == 'amount':
         #     total = discount = 0.0
         #     for line in self.order_line:
@@ -97,6 +141,13 @@ class AccountMove(models.Model):
         #         desc = math.trunc(desc*100.0)/100.0
         #         desc = desc / tot
         #         line.discount = desc*100
+
+    # def write(self, values):
+    #     if "discount_total_geral" in values:
+    #         import pudb;pu.db
+    #         self.set_lines_discount()
+    #     result = super().write(values)
+    #     return result
 
     # @api.multi
     # def button_dummy(self):
