@@ -3,6 +3,7 @@
 
 from odoo import api, fields, models, _
 from datetime import date, datetime
+from dateutil.relativedelta import relativedelta
 from odoo.exceptions import UserError
 
 class AccountMove(models.Model):
@@ -81,62 +82,71 @@ class AccountMove(models.Model):
                 self.invoice_date_due = date_due
    
     def calcular_vencimento(self, dia_preferencia, parcela):
-        import pudb;pu.db
-        if self.invoice_date:
-            hj = self.invoice_date
-        else:
-            hj = date.today()
+        hj = date.today()
         dia = hj.day
-        mes = hj.month
-        ano = hj.year
         if dia_preferencia:
-            if dia >= dia_preferencia:
-                mes = mes + 1
-                if mes > 12:
-                    mes = 1
-                    ano = ano + 1            
             dia = dia_preferencia
-        mes = mes + parcela
-
-        if mes > 12 and mes < 25:
-            mes = mes - 12
-            ano = ano + 1
-        if mes > 24 and mes < 37:
-            mes = mes - 24
-            ano = ano + 2
-        if mes > 36 and mes < 49:
-            mes = mes - 36
-            ano = ano + 3
-        if mes > 48 and mes < 61:
-            mes = mes - 48
-            ano = ano + 4
-        if mes > 60 and mes < 73:
-            mes = mes - 60
-            ano = ano + 5
-        if mes > 72 and mes < 85:
-            mes = mes - 72
-            ano = ano + 6
-        if mes > 84 and mes < 97:
-            mes = mes - 84
-            ano = ano + 7
-        if mes > 96 and mes < 109:
-            mes = mes - 96
-            ano = ano + 8
-        if mes > 108 and mes < 121:
-            mes = mes - 108
-            ano = ano + 9
-        
-        if dia > 28 and mes == 2:
-            dia = 28
-        if dia == 31 and mes not in (1,3,5,7,8,10,12):
-            dia = 30
-        data_str = '%s-%s-%s' %(ano, mes, dia)
-        data_vcto = datetime.strptime(data_str,'%Y-%m-%d').date()
+        data_vcto = hj + relativedelta(day=dia,months=parcela)
+        # print(data_vcto.strftime("%Y-%m-%d"))
         return data_vcto
+
+        # if self.invoice_date:
+        #     hj = self.invoice_date
+        # else:
+        #     hj = date.today()
+        # dia = hj.day
+        # mes = hj.month
+        # ano = hj.year
+        # if dia_preferencia:
+        #     if dia >= dia_preferencia:
+        #         parcela += 1
+        #         # mes = mes + 1
+        #         # if mes > 12:
+        #         #     mes = 1
+        #         #     ano = ano + 1            
+        #     dia = dia_preferencia
+        # # anot = int(parcela / 12)  
+        # data_vcto = hj + relativedelta(day=dia,months=parcela)
+        # mes = mes + parcela
+
+        # if mes > 12 and mes < 25:
+        #     mes = mes - 12
+        #     ano = ano + 1
+        # if mes > 24 and mes < 37:
+        #     mes = mes - 24
+        #     ano = ano + 2
+        # if mes > 36 and mes < 49:
+        #     mes = mes - 36
+        #     ano = ano + 3
+        # if mes > 48 and mes < 61:
+        #     mes = mes - 48
+        #     ano = ano + 4
+        # if mes > 60 and mes < 73:
+        #     mes = mes - 60
+        #     ano = ano + 5
+        # if mes > 72 and mes < 85:
+        #     mes = mes - 72
+        #     ano = ano + 6
+        # if mes > 84 and mes < 97:
+        #     mes = mes - 84
+        #     ano = ano + 7
+        # if mes > 96 and mes < 109:
+        #     mes = mes - 96
+        #     ano = ano + 8
+        # if mes > 108 and mes < 121:
+        #     mes = mes - 108
+        #     ano = ano + 9
+        
+        # if dia > 28 and mes == 2:
+        #     dia = 28
+        # if dia == 31 and mes not in (1,3,5,7,8,10,12):
+        #     dia = 30
+        # data_str = '%s-%s-%s' %(ano, mes, dia)
+        # data_vcto = datetime.strptime(data_str,'%Y-%m-%d').date()
+        # return data_vcto
 
     @api.depends('num_parcela', 'dia_vcto', 'vlr_prim_prc')
     def action_calcula_parcela(self):
-        import pudb;pu.db
         prcs = []       
         prc = 0
         # if self.rateio_frete:
@@ -191,7 +201,6 @@ class AccountMove(models.Model):
     #     pass
 
     def _recompute_payment_terms_lines(self):
-        import pudb;pu.db
         self.ensure_one()
         self = self.with_company(self.company_id)
         in_draft_mode = self != self._origin
@@ -240,21 +249,20 @@ class AccountMove(models.Model):
             :param total_amount_currency:   The invoice's total in invoice's currency.
             :return:                        A list <to_pay_company_currency, to_pay_invoice_currency, due_date>.
             '''
-            if self.invoice_payment_term_id:
-                # import pudb;pu.db
+            if self.invoice_payment_term_id:               
                 to_compute = self.invoice_payment_term_id.compute(total_balance, date_ref=date, currency=self.company_id.currency_id)
                 if not self.parcela_ids and self.currency_id == self.company_id.currency_id:
                     # Single-currency.
                     return [(b[0], b[1], b[1]) for b in to_compute]
-                else:
-                    lista_parcelas = []
-                    for prc in self.parcela_ids:
-                        lista_parcelas.append((prc.data_vencimento, -(prc.valor), -(prc.valor)))
-                        
+                else:                      
                     # Multi-currencies.
-                    # to_compute_currency = self.invoice_payment_term_id.compute(total_amount_currency, date_ref=date, currency=self.currency_id)
-                    # return [(b[0], b[1], ac[1]) for b, ac in zip(to_compute, to_compute_currency)]
-                    return lista_parcelas    
+                    to_compute_currency = self.invoice_payment_term_id.compute(total_amount_currency, date_ref=date, currency=self.currency_id)
+                    return [(b[0], b[1], ac[1]) for b, ac in zip(to_compute, to_compute_currency)]
+            elif self.parcela_ids:
+                lista_parcelas = []
+                for prc in self.parcela_ids:
+                    lista_parcelas.append((prc.data_vencimento, -(prc.valor), -(prc.valor)))
+                return lista_parcelas
             else:
                 return [(fields.Date.to_string(date), total_balance, total_amount_currency)]
 
@@ -271,7 +279,6 @@ class AccountMove(models.Model):
             # As we try to update existing lines, sort them by due date.
             existing_terms_lines = existing_terms_lines.sorted(lambda line: line.date_maturity or today)
             existing_terms_lines_index = 0
-
             # Recompute amls: update existing line or create new one for each payment term.
             new_terms_lines = self.env['account.move.line']
             for date_maturity, balance, amount_currency in to_compute:        
@@ -323,7 +330,6 @@ class AccountMove(models.Model):
         computation_date = _get_payment_terms_computation_date(self)
         account = _get_payment_terms_account(self, existing_terms_lines)
         to_compute = _compute_payment_terms(self, computation_date, total_balance, total_amount_currency)
-        import pudb;pu.db
         new_terms_lines = _compute_diff_payment_terms_lines(self, existing_terms_lines, account, to_compute)
 
         # Remove old terms lines that are no longer needed.
@@ -449,7 +455,6 @@ class AccountMove(models.Model):
         #     inv.with_context(ctx).write(vals)  
                                                                                                                                                               
     def finalize_invoice_move_lines(self, move_lines):
-        import pudb;pu.db
         res = super(AccountMove, self).\
         finalize_invoice_move_lines(move_lines)
         parcela = 1
